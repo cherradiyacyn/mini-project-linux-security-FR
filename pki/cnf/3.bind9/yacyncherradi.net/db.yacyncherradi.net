@@ -1,0 +1,15 @@
+;
+; BIND data file for yacyncherradi.net
+;
+$TTL	604800
+@	IN	SOA	yacyncherradi.net. root.yacyncherradi.net. (
+			      2		; Serial
+			 604800		; Refresh
+			  86400		; Retry
+			2419200		; Expire
+			 604800 )	; Negative Cache TTL
+;
+@	IN	NS	ns.yacyncherradi.net.
+@	IN	A	192.168.56.3
+ns	IN	A	192.168.56.3
+www	IN	CNAME	ns

@@ -1,0 +1,10 @@
+zone "yacyncherradi.net" {
+	type master;
+	file "/etc/bind/yacyncherradi.net/db.yacyncherradi.net";
+};
+
+zone "56.168.192.in-addr.arpa" {
+	type master;
+	file "/etc/bind/yacyncherradi.net/db.192";
+};
+

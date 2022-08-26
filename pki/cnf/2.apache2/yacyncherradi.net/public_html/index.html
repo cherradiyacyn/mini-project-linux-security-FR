@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minis-projets en sécurité</title>
+    <style type="text/css">
+		h2 {
+            background-color: #d6f0f8;
+        }
+        h3, th {
+            background-color: #dedede;
+        }
+        h4 {
+            background-color: #eee192;
+        }
+        td, th {
+			border: solid black .1em;
+			padding: 1em;
+		}
+		table {
+			border-collapse: collapse;
+		}
+        video, img {
+            border: solid #dedede .1em;
+        }
+        header img {
+            border: none;
+        }
+        header {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: space-between;
+            align-items: center;
+        }
+	</style>
+</head>
+<body>
+    <header>
+        <img src="media/ucam.png" alt="logo">
+        <div>
+            <h1>Minis-projets en sécurité</h1>
+                <table>
+                    <tr>
+                        <th>Encadrement</th>
+                        <td>Professeur My. Ahmed EL KIRAM</td>
+                    </tr>
+                    <tr>
+                        <th>Réalisation</th>
+                        <td>Yassine CHERRADI</td>
+                    </tr>
+                </table>
+        </div>
+    </header>
+    <main>
+        <h2>I. Environnement</h2>
+        <table>
+            <tr>
+                <th>Environnement de virtualisation</th>
+                <th>Environnement de déploiment</th>
+                <th>Addresse du réseau</th>
+                <th>Type d'adapteur réseau de la VM</th>
+                <th>Addresse IP du Client</th>
+                <th>Addresse IP de l'AC Root, l'AC Intermediaire et les Serveurs Web et DNS</th>
+            </tr>
+            <tr>
+                <td>VirtualBox 6.1.10 Ubuntu</td>
+                <td><a href="http://releases.ubuntu.com/16.04/">Ubuntu 16.04.7 LTS</a></td>
+                <td>192.168.56.0/24</td>
+                <td>Host-only Adapter, 'vboxnet' - Paravirtualized Network (virtio-net)</td>
+                <td>192.168.56.1</td>
+                <td>192.168.56.3</td>
+            </tr>
+        </table>
+
+        <h2>II. Passwordless SSH</h2>
+        <h3>1. Configuration :</h3>
+            <h4>1.1 Configuration du Client :</h4>
+<pre>
+    <code>
+        ssh-keygen
+        ssh-copy-id -i /home/user/.ssh/id_rsa.pub user@192.168.56.3   
+    </code>
+</pre>
+            <h4>1.2. Configuration du Serveur :</h4>
+<pre>
+    <code>
+        vim /etc/ssh/sshd_config
+            PasswordAuthentication no
+            ChallengeResponseAuthentication no
+            UsePAM no
+
+        systemctl restart sshd
+    </code>
+</pre>
+
+        <h2>III. Autorité de certification OpenSSL</h2>
+            <h3>1. Introduction :</h3>
+                <p>
+                    OpenSSL est une bibliothèque cryptographique libre et gratuite qui fournit plusieurs outils en ligne de commande pour la gestion des certificats numériques. 
+                    Certains de ces outils peuvent être utilisés pour agir en tant qu'autorité de certification.
+                </p>
+                <p>
+                    Une autorité de certification (AC) est une entité qui signe des certificats numériques. De nombreux sites web doivent faire savoir à leurs clients que la connexion est sécurisée. 
+                    Ils paient donc une AC de confiance internationale (par exemple, VeriSign, DigiCert) pour signer un certificat pour leur domaine.
+                </p>
+                <p>
+                    Dans certains cas, il peut être plus judicieux d'agir en tant que propre AC, plutôt que de payer un AC comme DigiCert. 
+                    Les cas les plus courants sont la sécurisation d'un site web intranet ou la délivrance de certificats aux clients pour leur permettre de s'authentifier auprès d'un serveur (par exemple, Apache, OpenVPN).
+                </p>
+
+            <h3>2. Créer une paire pour la racine</h3>
+                <p>
+                    Agir en tant qu'autorité de certification (AC) signifie traiter des paires cryptographiques de clés privées et de certificats publics. 
+                    La toute première paire cryptographique que nous allons créer est la paire de la racine. 
+                    Celle-ci se compose de la clé de la racine (ca.key.pem) et du certificat de la racine (ca.cert.pem). 
+                    Cette paire forme l'identité de votre AC.
+                </p>
+                <p>
+                    Généralement, l'AC racine ne signe pas directement les certificats des serveurs ou des clients. 
+                    Elle n'est utilisée que pour créer une ou plusieurs AC intermédiaires, auxquelles l'AC racine fait confiance pour signer des certificats en son nom. 
+                    Il s'agit là d'une bonne pratique.
+                    Elle permet de garder la clé de la racine hors ligne et inutilisée autant que possible, car toute compromission de la clé de la racine est désastreuse.
+                </p>
+                <h4>2.1. Préparer le répertoire :</h4>
+                    <ol>
+                        <li>Choisissez un répertoire (/root/ca) pour stocker toutes les clés et certificats.
+<pre>
+    <code>
+        mkdir /root/ca
+    </code>
+</pre>
+                        </li>
+                        <li>Créer la structure du répertoire. Les fichiers index.txt et serial agissent comme une base de données pour garder la trace des certificats signés.
+<pre>
+    <code>
+        cd /root/ca
+        mkdir certs crl newcerts private
+        chmod 700 private
+        touch index.txt
+        echo 1000 > serial
+    </code>
+</pre>
+                        </li>
+                    </ol>
+                <h4>2.2. Préparer le fichier de configuration :</h4>
+<pre>
+    <code>
+        [ CA_default ]
+        # Directory and file locations.
+        dir               = /root/ca
+        countryName_default             = MA
+        stateOrProvinceName_default     = Marrakech-Safi
+        0.organizationName_default      = CHERRADI Ltd
+    </code>
+</pre>
+                <h4>2.3. Créer une clé pour la racine :</h4>
+                <p>
+                    Créez la clé de la racine (ca.key.pem) et conservez-la en toute sécurité.
+                    Toute personne en possession de la clé de la racine peut délivrer des certificats de confiance.
+                    Cryptez la clé de la racine avec un cryptage AES 256-bits et un mot de passe fort.
+                </p>
+                <p>
+                    Note: Utilisez 4096 bits pour toutes les clés de l'AC racine et intermédiaires.
+                    Vous pourrez toujours signer des certificats de serveur et de client d'une longueur plus courte.
+                </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl genrsa -aes256 -out private/ca.key.pem 4096
+            // pass phrase : prcasp
+
+        chmod 400 private/ca.key.pem
+    </code>
+</pre>
+                <h4>2.4. Créer un certificat pour la racine :</h4>
+                <p>
+                    Utilisez la clé de la racine (ca.key.pem) pour créer un certificat de la racine (ca.cert.pem). 
+                    Donnez au certificat de la racine une longue date d'expiration, par exemple vingt ans.
+                    Une fois le certificat de la racine expiré, tous les certificats signés par l'AC deviennent invalides.
+                </p>
+                <p>
+                    Attention: Chaque fois que vous utilisez l'outil req, vous devez spécifier un fichier de configuration à utiliser avec l'option -config, sinon OpenSSL sera par défaut configuré '/etc/pki/tls/openssl.cnf'.
+                </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl req -config openssl.cnf \
+            -key private/ca.key.pem \
+            -new -x509 -days 7300 -sha256 -extensions v3_ca \
+            -out certs/ca.cert.pem
+
+            // pass phrase : rcasp
+
+            // Country Name (2 letter code) [XX]:MA
+            // State or Province Name []:Marrakech-Safi
+            // Organization Name []:CHERRADI Ltd
+            // Organizational Unit Name []:CHERRADI Ltd Certificate Authority
+            // Common Name []:CHERRADI Ltd Root CA
+
+        chmod 444 certs/ca.cert.pem
+    </code>
+</pre>
+
+                <h4>2.5. Vérifier le certificat de la racine :</h4>
+<pre>
+    <code>
+        openssl x509 -noout -text -in certs/ca.cert.pem
+    </code>
+</pre>
+
+            <h3>3. Créer une paire pour l'intermédiaire</h3>
+                <p>
+                    Une autorité de certification (AC) intermédiaire est une entité qui peut signer des certificats au nom de l'AC racine. 
+                    L'AC racine signe le certificat intermédiaire, formant ainsi une chaîne de confiance.
+                </p>
+                <p>
+                    L'utilisation d'une AC intermédiaire a pour objectif principal la sécurité. La clé de la racine peut être maintenue hors ligne et utilisée aussi rarement que possible. 
+                    Si la clé de l'intermédiaire est compromise, l'AC racine peut révoquer le certificat de l'intermédiaire et créer une nouvelle paire cryptographique pour intermédiaire.
+                </p>
+                <h4>3.1. Préparer le répertoire :</h4>
+                    <ol>
+                        <li>Les fichiers de l'AC racine sont conservés dans /root/ca. Choisissez un autre répertoire (/root/ca/intermediate) pour stocker les fichiers de l'AC intermédiaires.
+<pre>
+    <code>
+        mkdir /root/ca/intermediate
+    </code>
+</pre>
+                        </li>
+                        <li>Créez la même structure du répertoire que celle utilisée pour les fichiers de l'AC racine.
+                            Il est également pratique de créer un répertoire `csr` pour contenir les demandes de signature de certificats.
+<pre>
+    <code>
+        cd /root/ca/intermediate
+        mkdir certs crl csr newcerts private
+        chmod 700 private
+        touch index.txt
+        echo 1000 > serial
+    </code>
+</pre>
+                        </li>
+                        <li>Ajoutez un fichier `crlnumber` à l'arborescence des répertoires de l'AC intermédiaire. `crlnumber` est utilisé pour garder une trace des listes de révocation de certificats.
+<pre>
+    <code>
+        echo 1000 > /root/ca/intermediate/crlnumber
+    </code>
+</pre>
+                        </li>
+                        <li>Copiez le fichier de configuration de l'AC intermédiaire de l'annexe dans `/root/ca/intermediate/openssl.cnf`. 
+                            Cinq options ont été modifiées par rapport au fichier de configuration de l'AC racine :
+<pre>
+    <code>
+        [ CA_default ]
+        dir             = /root/ca/intermediate
+        private_key     = $dir/private/intermediate.key.pem
+        certificate     = $dir/certs/intermediate.cert.pem
+        crl             = $dir/crl/intermediate.crl.pem
+        policy          = policy_loose
+    </code>
+</pre>
+                        </li>
+                    </ol>
+                <h4>3.2. Créer une clé pour l'intermédiaire :</h4>
+                    <p>
+                        Créez la clé de l'intermédiaire (intermediate.key.pem). Cryptez la clé de l'intermédiaire avec un cryptage AES 256-bits et un mot de passe fort.
+                    </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl genrsa -aes256 \
+            -out intermediate/private/intermediate.key.pem 4096
+            // pass phrase : imcasp
+
+        chmod 400 intermediate/private/intermediate.key.pem
+    </code>
+</pre>
+                <h4>3.3. Créer un certificat pour l'intermédiaire :</h4>
+                    <p>
+                        Utilisez la clé de l'intermédiaire pour créer une `demande de signature de certificat` (CSR).
+                        Les détails doivent généralement correspondre à ceux de l'AC racine. 
+                        Le nom commun doit cependant être différent.
+                    </p>
+                    <p>
+                        Attention: Assurez-vous de spécifier le fichier de configuration de l'AC intermédiaire (intermediate/openssl.cnf).
+                    </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl req -config intermediate/openssl.cnf -new -sha256 \
+            -key intermediate/private/intermediate.key.pem \
+            -out intermediate/csr/intermediate.csr.pem
+
+            // pass phrase : imcasp
+
+            // Country Name (2 letter code) [XX]:MA
+            // State or Province Name []:Marrakech-Safi
+            // Organization Name []:CHERRADI Ltd
+            // Organizational Unit Name []:CHERRADI Ltd Certificate Authority
+            // Common Name []:CHERRADI Ltd Intermediate CA
+    </code>
+</pre>
+                    <p>
+                        Pour créer un certificat pour l'intermédiaire, utilisez l'AC racine avec l'extension v3_intermediate_ca pour signer le CSR de l'intermédiaire. 
+                        Le certificat de l'intermédiaire doit être valide pour une période plus courte que le certificat de la racine.  Dix ans serait raisonnable.
+                    </p>
+                    <p>
+                        Attention: Cette fois, spécifiez le fichier de configuration de l'AC racine (/root/ca/openssl.cnf).
+                    </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl ca -config openssl.cnf -extensions v3_intermediate_ca \
+            -days 3650 -notext -md sha256 \
+            -in intermediate/csr/intermediate.csr.pem \
+            -out intermediate/certs/intermediate.cert.pem
+
+            // pass phrase : rcasp
+
+        chmod 444 intermediate/certs/intermediate.cert.pem
+    </code>
+</pre>
+                    <p>
+                        Le fichier index.txt est l'endroit où l'outil OpenSSL `ca` stocke la base de données des certificats. 
+                        Ne pas supprimer ou modifier ce fichier à la main. 
+                        Il doit maintenant contenir une ligne qui fait référence au certificat de l'intermédiaire.
+                    </p>
+                <h4>3.4. Vérifier le certificat de l'intermédiaire :</h4>
+                    <p>
+                        Comme nous l'avons fait pour le certificat de la racine, vérifiez que les détails du certificat de l'intermédiaire sont corrects.
+                    </p>
+<pre>
+    <code>
+        openssl x509 -noout -text \
+            -in intermediate/certs/intermediate.cert.pem
+    </code>
+</pre>
+                    <p>
+                        Vérifiez le certificat de l'intermédiaire par rapport au certificat de la racine. Un OK indique que la chaîne de confiance est intacte.
+                    </p>
+<pre>
+    <code>
+        openssl verify -CAfile certs/ca.cert.pem \
+            intermediate/certs/intermediate.cert.pem
+    </code>
+</pre>
+                <h4>3.5. Créer le fichier de chaîne de certificats :</h4>
+                    <p>
+                        Lorsqu'une application (par exemple, un navigateur web) tente de vérifier un certificat signé par l'AC intermédiaire, 
+                        elle doit également vérifier le certificat de l'intermédiaire par rapport au certificat de la racine. 
+                        Pour compléter la chaîne de confiance, créez une chaîne de certificats de l'AC à présenter à la demande.
+                    </p>
+                    <p>
+                        Pour créer la chaîne de certificats de l'AC, concaténez les certificats intermédiaire et racine ensemble. 
+                        Nous utiliserons ce fichier ultérieurement pour vérifier les certificats signés par l'AC intermédiaire.
+                    </p>
+<pre>
+    <code>
+        cat intermediate/certs/intermediate.cert.pem \
+            certs/ca.cert.pem > intermediate/certs/ca-chain.cert.pem
+        
+        chmod 444 intermediate/certs/ca-chain.cert.pem
+    </code>
+</pre>
+                    <p>
+                        Note: Notre fichier contenant la chaîne de certificats doit inclure le certificat de la racine car aucune application client n'en a encore connaissance. 
+                        Une meilleure option, en particulier si vous administrez un intranet, consiste à installer votre certificat de la racine sur chaque client qui doit se connecter. 
+                        Dans ce cas, le fichier de chaîne ne doit contenir que votre certificat de l'intermédiaire.
+                    </p>
+                
+            <h3>4. Signer des certificats pour serveurs et clients</h3>
+                <p>
+                    Nous allons signer des certificats en utilisant notre AC intermédiaire. 
+                    Vous pouvez utiliser ces certificats signés dans diverses situations, par exemple pour sécuriser des connexions à un serveur web ou pour authentifier des clients se connectant à un service.
+                </p>
+                <p>
+                    Note: Les étapes ci-dessous sont, de votre point de vue en tant qu'autorité de certification. 
+                    Un tiers peut cependant créer sa propre clé privée et sa propre demande de signature de certificat (CSR) sans vous révéler sa clé privée. 
+                    Il vous donne sa CSR, et vous lui rendez un certificat signé. 
+                    Dans ce scénario, ignorez les commandes `genrsa` et `req`.
+                </p>
+                <h4>4.1. Créer une clé :</h4>
+                    <p>
+                        Les paires de nos racine et intermédiaire sont de 4096 bits. 
+                        Les certificats des serveurs et des clients expirent normalement après un an, nous pouvons donc utiliser 2048 bits à la place.
+                    </p>
+                    <p>
+                        Note: Bien que 4096 bits soit légèrement plus sûr que 2048 bits, il ralentit `les poignées de main TLS` et augmente considérablement la charge du processeur. 
+                        C'est pourquoi la plupart des sites web utilisent des paires de 2048 bits.
+                    </p>
+                    <p>
+                        Si vous créez une paire cryptographique à utiliser avec un serveur web (par exemple, Apache), vous devrez entrer ce mot de passe chaque fois que vous redémarrerez le serveur web. 
+                        Vous pouvez omettre l'option -aes256 pour créer une clé sans mot de passe.
+                    </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl genrsa -aes256 \
+            -out intermediate/private/yacyncherradi.net.key.pem 2048
+        
+        chmod 400 intermediate/private/yacyncherradi.net.key.pem
+    </code>
+</pre>
+                <h4>4.2. Créer un certificat :</h4>
+                    <p>
+                        Utilisez la clé privée pour créer une demande de signature de certificat (CSR). 
+                        Les détails de la CSR ne doivent pas nécessairement correspondre à ceux de l'AC intermédiaire. 
+                        Pour les certificats de serveur, le nom commun doit être un FQDN (par exemple, www.example.com), tandis que pour les certificats de client, il peut s'agir de n'importe quel identifiant unique (par exemple, une adresse électronique). 
+                        Notez que le `nom commun` ne peut pas être le même que celui de votre certificat racine ou intermédiaire.
+                    </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl req -config intermediate/openssl.cnf \
+            -key intermediate/private/yacyncherradi.net.key.pem \
+            -new -sha256 -out intermediate/csr/yacyncherradi.net.csr.pem
+
+            // pass phrase : ycsp
+                
+            // Country Name (2 letter code) [XX]:MA
+            // Organization Name []:Yacyn Ltd
+            // Organizational Unit Name []:Yacyn Ltd Web Services
+            // Common Name []:yacyncherradi.net
+    </code>
+</pre>
+                    <p>
+                        Pour créer un certificat, utilisez l'AC intermédiaire pour signer le CSR. 
+                        Si le certificat doit être utilisé sur un serveur, utilisez l'extension `server_cert`. 
+                        Si le certificat doit être utilisé pour l'authentification d'un utilisateur, utilisez l'extension `usr_cert`. 
+                        Les certificats ont généralement une validité d'un an, bien qu'une autorité de certification accorde généralement quelques jours supplémentaires pour des raisons de commodité.
+                    </p>
+<pre>
+    <code>
+        cd /root/ca
+        openssl ca -config intermediate/openssl.cnf \
+            -extensions server_cert -days 375 -notext -md sha256 \
+            -in intermediate/csr/yacyncherradi.net.csr.pem \
+            -out intermediate/certs/yacyncherradi.net.cert.pem
+
+        chmod 444 intermediate/certs/yacyncherradi.net.cert.pem
+    </code>
+</pre>
+                    <p>
+                        Le fichier `intermediate/index.txt` doit contenir une ligne faisant référence à ce nouveau certificat.
+                    </p>
+
+                <h4>4.3. Vérifier le certificat :</h4>
+<pre>
+    <code>
+        openssl x509 -noout -text \
+            -in intermediate/certs/yacyncherradi.net.cert.pem
+    </code>
+</pre>
+                    <p>
+                        Utilisez le fichier de la chaîne de certificats de l'AC que nous avons précédemment créé (ca-chain.cert.pem) pour vérifier que le nouveau certificat possède une chaîne de confiance valide.
+                    </p>
+                
+                <h4>4.4. Déployer le certificat :</h4>
+                    <p>
+                        Vous pouvez maintenant soit déployer votre nouveau certificat sur un serveur, soit distribuer le certificat à un client. 
+                        Lors du déploiement vers une application serveur (par exemple, Apache), vous devez mettre à disposition les fichiers suivants :
+                    </p>
+<pre>
+    <code>
+        ca-chain.cert.pem
+        yacyncherradi.net.key.pem
+        yacyncherradi.net.cert.pem
+    </code>
+</pre>
+                    <p>
+                        Si vous signez un CSR d'un tiers, vous n'avez pas accès à sa clé privée. 
+                        Il vous suffit donc de lui rendre le fichier de la chaîne (ca-chain.cert.pem) et le certificat (yacyncherradi.net.cert.pem).
+                    </p>
+
+            <h3>5. Annexe</h3>
+                <ol>
+                    <li><a href="append/root-config.txt">Root CA configuration file</a></li>
+                    <li><a href="append/intermediate-config.txt">Intermediate CA configuration file</a></li>
+                    <li><a href="append/webdns.html">Configuration du serveur Web et DNS</a></li>
+                </ol>
+        
+        <h2>IV. Sources</h2>
+            <ul>
+                <li><a href="https://pki-tutorial.readthedocs.io/en/latest/">OpenSSL PKI Tutorial v1.1 par Stefan H. Holek</a></li>
+                <li><a href="https://jamielinux.com/docs/openssl-certificate-authority/index.html">OpenSSL Certificate Authority par Jamie Nguyen</a></li>
+                <li><a href="https://youtu.be/JdA1ZE8a2Y4">Mise en place d'une Autorité de certification par Thomas Boutry</a></li>
+                <li><a href="https://medium.com/better-programming/how-to-create-ssl-certificates-for-development-861237235933">How to Create SSL Certificates for Development par Patrick Kalkman</a></li>
+            </ul>
+    </main>
+</body>
+</html>

@@ -1,0 +1,13 @@
+;
+; BIND reverse data file for yacyncherradi.net
+;
+$TTL	604800
+@	IN	SOA	yacyncherradi.net. root.yacyncherradi.net. (
+			      1		; Serial
+			 604800		; Refresh
+			  86400		; Retry
+			2419200		; Expire
+			 604800 )	; Negative Cache TTL
+;
+@	IN	NS	ns.
+3	IN	PTR	ns.yacyncherradi.net.

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mise en place des Serveurs Web, DNS</title>
+    <style type="text/css">
+		h2 {
+            background-color: #d6f0f8;
+        }
+        h3, th {
+            background-color: #dedede;
+        }
+        h4 {
+            background-color: #eee192;
+        }
+        td, th {
+			border: solid black .1em;
+			padding: 1em;
+		}
+		table {
+			border-collapse: collapse;
+		}
+        video, img {
+            border: solid #dedede .1em;
+        }
+        header img {
+            border: none;
+        }
+        header {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content:space-between;
+            align-items: center;
+        }
+	</style>
+</head>
+<body>
+    <main>
+        <h4>1. Dépendances :</h4>
+<pre>
+    <code>
+        sudo apt-get install apache2 libapache2-mod-php7.0 php7.0 bind9
+    </code>
+</pre>
+
+        <h4>2. Réglage de l'interface réseau :</h4>
+<pre>
+    <code>
+        sudo vim /etc/network/interfaces
+            auto enp0s3
+            iface enp0s3 inet static
+            address 192.168.56.3
+            netmask 255.255.255.0
+    </code>
+</pre>
+        
+        <h4>3. Apache :</h4>
+<pre>
+    <code>
+        mkdir /var/www/yacyncherradi.net
+        chown user:www-data /var/www/yacyncherradi.net
+        chmod 750 /var/www/yacyncherradi.net
+        mkdir /var/www/yacyncherradi.net/public_html
+        cd  /var/www/yacyncherradi.net/public_html
+
+        vim /etc/apache2/ports.conf
+            &lt;IfModule ssl_module&gt;
+	            Listen 443
+            &lt;/IfModule&gt;
+
+        mkdir /etc/apache2/ssl
+        cd /etc/apache2/ssl
+        openssl req -x509 -nodes -days 90 -newkey rsa:2048 -keyout ssl.key -out ssl.crt
+
+        vim /etc/apache2/sites-available/yacyncherradi.net.conf
+            &lt;VirtualHost *:443&gt;
+                ServerName  192.168.56.3
+                ServerAdmin admin@yacyncherradi.net
+                DirectoryIndex  index.php index.html
+                DocumentRoot    /var/www/yacyncherradi.net/public_html
+
+                SSLEngine   on
+                SSLCertificateFile  /etc/apache2/ssl/ssl.crt
+                SSLCertificateKeyFile   /etc/apache2/ssl/ssl.key            
+
+                ErrorLog    ${APACHE_LOG_DIR}/error.log
+                CustomLog   ${APACHE_LOG_DIR}/access.log combined
+            &lt;/VirtualHost&gt;      
+        a2enmod ssl
+        a2dissite 000-default.conf        
+        a2ensite yacyncherradi.net.conf
+        systemctl restart apache2
+    </code>
+</pre>
+
+            <h4>4. DNS :</h4>
+<pre>
+    <code>
+        mkdir /etc/bind/yacyncherradi.net
+        cd /etc/bind/yacyncherradi.net
+        vim db.yacyncherradi.net
+            ;
+            ; BIND data file for yacyncherradi.net
+            ;
+            $TTL	604800
+            @	IN	SOA	yacyncherradi.net. root.yacyncherradi.net. (
+			                  2		; Serial
+			             604800		; Refresh
+			              86400		; Retry
+			            2419200		; Expire
+			             604800 )	; Negative Cache TTL
+            ;
+            @	IN	NS	ns.yacyncherradi.net.
+            @	IN	A	192.168.56.3
+            ns	IN	A	192.168.56.3
+            www	IN	CNAME	ns
+        
+        
+        vim db.192
+            ;
+            ; BIND reverse data file for yacyncherradi.net
+            ;
+            $TTL	604800
+            @	IN	SOA	yacyncherradi.net. root.yacyncherradi.net. (
+			                  1		; Serial
+			             604800		; Refresh
+			              86400		; Retry
+			            2419200		; Expire
+			             604800 )	; Negative Cache TTL
+            ;
+            @	IN	NS	ns.
+            3	IN	PTR	ns.yacyncherradi.net.
+
+        
+        vim /etc/bind/named.conf.local
+            zone "yacyncherradi.net" {
+                type master;
+                file "/etc/bind/yacyncherradi.net/db.yacyncherradi.net";
+            };
+
+            zone "56.168.192.in-addr.arpa" {
+                type master;
+                file "/etc/bind/yacyncherradi.net/db.192";
+            };
+
+        systemctl restart bind9
+        ping yacyncherradi.net
+    </code>
+</pre>
+
+            <h4>5. Verification (@Client) :</h4>
+<pre>
+    <code>
+        vim /etc/resolv.conf
+            nameserver 192.168.56.3
+    </code>
+</pre>
+
+    </main>
+</body>
+</html>
